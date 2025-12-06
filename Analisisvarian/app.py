@@ -28,7 +28,7 @@ st.set_page_config(
 )
 
 st.title("🤖 AI Financial Super Agent – All-in-One Dashboard")
-st.caption("Excel / PDF → Auto Analysis | Variance | Scenario | Dashboard | AI Chat")
+st.caption("Excel / PDF → Auto Analysis | Variance | Scenario | Dashboard | AI Chat | Financial Ratios")
 
 #############################################
 # PDF ENGINE
@@ -39,6 +39,7 @@ try:
 except:
     from PyPDF2 import PdfReader
     PDF_ENGINE = "PyPDF2"
+
 
 def extract_text_from_pdf(file):
     text = ""
@@ -54,6 +55,7 @@ def extract_text_from_pdf(file):
                 text += page.extract_text() + "\n"
     return text
 
+
 #############################################
 # AI FUNCTION
 #############################################
@@ -65,12 +67,14 @@ def ai_analyze(prompt):
     try:
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role":"user","content":prompt}],
+            messages=[{"role": "user", "content": prompt}],
             temperature=0.6
         )
         return response.choices[0].message.content
+
     except Exception as e:
         return f"❌ Error AI: {e}"
+
 
 #############################################
 # FILE UPLOADER
@@ -118,7 +122,7 @@ if uploaded_file:
     else:
 
         # ===========================
-        # ✅ MULTI SHEET READER
+        # MULTI SHEET READER
         # ===========================
         if file_type == "csv":
             df = pd.read_csv(uploaded_file)
@@ -127,7 +131,6 @@ if uploaded_file:
         else:
             sheets = pd.read_excel(uploaded_file, sheet_name=None)
             sheet_names = list(sheets.keys())
-
             selected_sheet = st.selectbox("📑 Pilih Sheet", sheet_names)
             df = sheets[selected_sheet]
 
@@ -137,7 +140,8 @@ if uploaded_file:
         tabs = st.tabs([
             "📊 Variance Analysis",
             "📈 Scenario Planning",
-            "📍 Dashboard & AI Chat"
+            "📍 Dashboard & AI Chat",
+            "📉 Analisis Rasio Keuangan ✅"
         ])
 
         ##################################################
@@ -146,7 +150,7 @@ if uploaded_file:
         with tabs[0]:
             st.subheader("📊 Budget vs Actual Analysis")
 
-            if {"Category","Budget","Actual"}.issubset(df.columns):
+            if {"Category", "Budget", "Actual"}.issubset(df.columns):
 
                 df["Variance"] = df["Actual"] - df["Budget"]
                 df["Variance %"] = (df["Variance"] / df["Budget"]) * 100
@@ -166,7 +170,7 @@ if uploaded_file:
                 fig_line = px.line(
                     df,
                     x="Category",
-                    y=["Budget","Actual"],
+                    y=["Budget", "Actual"],
                     markers=True,
                     title="Budget vs Actual"
                 )
@@ -197,7 +201,7 @@ if uploaded_file:
         with tabs[1]:
             st.subheader("📈 Scenario Planning")
 
-            if {"Category","Base Forecast"}.issubset(df.columns):
+            if {"Category", "Base Forecast"}.issubset(df.columns):
 
                 scenario_prompt = st.text_area(
                     "Masukkan skenario (contoh: penurunan penjualan 10%, kenaikan biaya 5%)"
@@ -244,7 +248,7 @@ if uploaded_file:
         with tabs[2]:
             st.subheader("📍 Sales Dashboard")
 
-            if {"Region","Sales"}.issubset(df.columns):
+            if {"Region", "Sales"}.issubset(df.columns):
 
                 query = """
                 SELECT Region, SUM(Sales) as Total_Sales
@@ -292,7 +296,7 @@ if uploaded_file:
                         st.chat_message("assistant").write(msg["content"])
 
                 if question := st.chat_input("Tanyakan sesuatu tentang data..."):
-                    st.session_state.chat_history.append({"role":"user","content":question})
+                    st.session_state.chat_history.append({"role": "user", "content": question})
 
                     with st.spinner("🤖 Thinking..."):
                         response = client.chat.completions.create(
@@ -301,11 +305,78 @@ if uploaded_file:
                         )
 
                     answer = response.choices[0].message.content
-                    st.session_state.chat_history.append({"role":"assistant","content":answer})
+                    st.session_state.chat_history.append({"role": "assistant", "content": answer})
                     st.chat_message("assistant").write(answer)
 
             else:
                 st.warning("Kolom wajib: Region dan Sales")
+
+        ##################################################
+        # TAB 4 - ANALISIS RASIO KEUANGAN ✅
+        ##################################################
+        with tabs[3]:
+            st.subheader("📉 Analisis Rasio Keuangan Otomatis")
+
+            try:
+                # convert dataframe ke dictionary (kolom 1 = kategori, kolom 2 = nilai)
+                data = dict(zip(df.iloc[:, 0], df.iloc[:, 1]))
+
+                net_sales = float(str(data.get("Net Sales", 0)).replace(",", "").replace(".", ""))
+                gross_profit = float(str(data.get("Gross Profit", 0)).replace(",", "").replace(".", ""))
+                ebit = float(str(data.get("EBIT", 0)).replace(",", "").replace(".", ""))
+
+                st.markdown("### 📌 Rasio Profitabilitas")
+
+                if net_sales > 0:
+
+                    gross_margin_ratio = (gross_profit / net_sales) * 100
+                    ebit_margin = (ebit / net_sales) * 100
+
+                    col1, col2 = st.columns(2)
+                    col1.metric("Gross Profit Margin (%)", f"{gross_margin_ratio:.2f}%")
+                    col2.metric("EBIT Margin (%)", f"{ebit_margin:.2f}%")
+
+                    ratio_df = pd.DataFrame({
+                        "Rasio": ["Gross Profit Margin", "EBIT Margin"],
+                        "Nilai (%)": [gross_margin_ratio, ebit_margin]
+                    })
+
+                    fig_ratio = px.bar(
+                        ratio_df,
+                        x="Rasio",
+                        y="Nilai (%)",
+                        title="📊 Grafik Rasio Profitabilitas",
+                        text_auto=True
+                    )
+
+                    st.plotly_chart(fig_ratio, use_container_width=True)
+
+                else:
+                    st.warning("Net Sales = 0 atau tidak ditemukan")
+
+                st.markdown("### 🤖 AI Interpretasi Rasio")
+
+                with st.spinner("AI sedang menganalisis rasio..."):
+                    prompt = f"""
+                    Nilai perusahaan:
+                    Net Sales     : {net_sales}
+                    Gross Profit  : {gross_profit}
+                    EBIT          : {ebit}
+
+                    Gross Profit Margin: {gross_margin_ratio:.2f}%
+                    EBIT Margin: {ebit_margin:.2f}%
+
+                    Jelaskan:
+                    1. Kondisi profitabilitas perusahaan
+                    2. Risiko utama yang terlihat
+                    3. Rekomendasi strategis untuk manajemen
+                    """
+                    ai_ratio = ai_analyze(prompt)
+
+                st.write(ai_ratio)
+
+            except Exception as e:
+                st.error(f"❌ Gagal melakukan analisis rasio: {e}")
 
 else:
     st.info("📂 Upload file untuk memulai analisis.")
