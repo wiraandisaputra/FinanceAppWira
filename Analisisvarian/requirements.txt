@@ -6,4 +6,5 @@ python-dotenv
 groq
 openpyxl
 PyPDF2
-pip install streamlit pdfplumber pandas matplotlib numpy
+pdfplumber 
+matplotlib 
