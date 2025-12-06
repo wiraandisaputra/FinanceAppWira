@@ -40,7 +40,6 @@ except:
     from PyPDF2 import PdfReader
     PDF_ENGINE = "PyPDF2"
 
-
 def extract_text_from_pdf(file):
     text = ""
     if PDF_ENGINE == "pdfplumber":
@@ -55,12 +54,10 @@ def extract_text_from_pdf(file):
                 text += page.extract_text() + "\n"
     return text
 
-
 #############################################
 # AI FUNCTION
 #############################################
 def ai_analyze(prompt):
-
     if not client:
         return "⚠️ GROQ API belum diatur"
 
@@ -74,7 +71,6 @@ def ai_analyze(prompt):
 
     except Exception as e:
         return f"❌ Error AI: {e}"
-
 
 #############################################
 # FILE UPLOADER
@@ -121,9 +117,7 @@ if uploaded_file:
     ##################################################
     else:
 
-        # ===========================
         # MULTI SHEET READER
-        # ===========================
         if file_type == "csv":
             df = pd.read_csv(uploaded_file)
             sheet_names = ["CSV File"]
@@ -281,7 +275,6 @@ if uploaded_file:
                 st.subheader("🤖 AI Commentary")
                 st.write(commentary)
 
-                # CHAT MODE
                 st.subheader("💬 AI Chat Mode")
 
                 if "chat_history" not in st.session_state:
@@ -312,71 +305,105 @@ if uploaded_file:
                 st.warning("Kolom wajib: Region dan Sales")
 
         ##################################################
-        # TAB 4 - ANALISIS RASIO KEUANGAN ✅
+        # TAB 4 - ANALISIS RASIO KEUANGAN
         ##################################################
         with tabs[3]:
             st.subheader("📉 Analisis Rasio Keuangan Otomatis")
 
             try:
-                # convert dataframe ke dictionary (kolom 1 = kategori, kolom 2 = nilai)
                 data = dict(zip(df.iloc[:, 0], df.iloc[:, 1]))
 
-                net_sales = float(str(data.get("Net Sales", 0)).replace(",", "").replace(".", ""))
-                gross_profit = float(str(data.get("Gross Profit", 0)).replace(",", "").replace(".", ""))
-                ebit = float(str(data.get("EBIT", 0)).replace(",", "").replace(".", ""))
+                def clean_number(value):
+                    if value is None:
+                        return 0
+                    return float(str(value).replace(".", "").replace(",", ""))
 
-                st.markdown("### 📌 Rasio Profitabilitas")
+                net_sales = clean_number(data.get("Net Sales", 0))
+                gross_profit = clean_number(data.get("Gross Profit", 0))
+                ebit = clean_number(data.get("EBIT", 0))
+                current_assets = clean_number(data.get("Current Assets", 0))
+                inventory = clean_number(data.get("Inventory", 0))
+                cash = clean_number(data.get("Cash", 0))
+                current_liabilities = clean_number(data.get("Current Liabilities", 0))
+                total_liabilities = clean_number(data.get("Total Liabilities", 0))
+                total_equity = clean_number(data.get("Total Equity", 0))
+                total_assets = clean_number(data.get("Total Assets", 0))
 
-                if net_sales > 0:
+                # PROFITABILITY
+                st.markdown("## 📌 Profitability Ratios")
+                gross_margin_ratio = (gross_profit / net_sales) * 100
+                ebit_margin = (ebit / net_sales) * 100
+                roa = (ebit / total_assets) * 100
+                roe = (ebit / total_equity) * 100
 
-                    gross_margin_ratio = (gross_profit / net_sales) * 100
-                    ebit_margin = (ebit / net_sales) * 100
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Gross Margin (%)", f"{gross_margin_ratio:.2f}%")
+                col2.metric("EBIT Margin (%)", f"{ebit_margin:.2f}%")
+                col3.metric("ROA (%)", f"{roa:.2f}%")
+                col4.metric("ROE (%)", f"{roe:.2f}%")
 
-                    col1, col2 = st.columns(2)
-                    col1.metric("Gross Profit Margin (%)", f"{gross_margin_ratio:.2f}%")
-                    col2.metric("EBIT Margin (%)", f"{ebit_margin:.2f}%")
+                # LIQUIDITY
+                st.markdown("## 📌 Liquidity Ratios")
+                current_ratio = current_assets / current_liabilities
+                quick_ratio = (current_assets - inventory) / current_liabilities
+                cash_ratio = cash / current_liabilities
 
-                    ratio_df = pd.DataFrame({
-                        "Rasio": ["Gross Profit Margin", "EBIT Margin"],
-                        "Nilai (%)": [gross_margin_ratio, ebit_margin]
-                    })
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Current Ratio", f"{current_ratio:.2f}")
+                col2.metric("Quick Ratio", f"{quick_ratio:.2f}")
+                col3.metric("Cash Ratio", f"{cash_ratio:.2f}")
 
-                    fig_ratio = px.bar(
-                        ratio_df,
-                        x="Rasio",
-                        y="Nilai (%)",
-                        title="📊 Grafik Rasio Profitabilitas",
-                        text_auto=True
-                    )
+                # SOLVENCY
+                st.markdown("## 📌 Solvency Ratios")
+                debt_to_asset = total_liabilities / total_assets
+                debt_to_equity = total_liabilities / total_equity
+                equity_ratio = total_equity / total_assets
 
-                    st.plotly_chart(fig_ratio, use_container_width=True)
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Debt to Asset", f"{debt_to_asset:.2f}")
+                col2.metric("Debt to Equity", f"{debt_to_equity:.2f}")
+                col3.metric("Equity Ratio", f"{equity_ratio:.2f}")
 
-                else:
-                    st.warning("Net Sales = 0 atau tidak ditemukan")
+                ratio_df = pd.DataFrame({
+                    "Ratio": [
+                        "Gross Margin", "EBIT Margin", "ROA", "ROE",
+                        "Current Ratio", "Quick Ratio", "Cash Ratio",
+                        "Debt to Asset", "Debt to Equity", "Equity Ratio"
+                    ],
+                    "Value": [
+                        gross_margin_ratio, ebit_margin, roa, roe,
+                        current_ratio, quick_ratio, cash_ratio,
+                        debt_to_asset, debt_to_equity, equity_ratio
+                    ]
+                })
 
-                st.markdown("### 🤖 AI Interpretasi Rasio")
+                fig_all = px.bar(
+                    ratio_df,
+                    x="Ratio",
+                    y="Value",
+                    title="📊 Financial Ratios Overview",
+                    text_auto=True
+                )
 
-                with st.spinner("AI sedang menganalisis rasio..."):
+                st.plotly_chart(fig_all, use_container_width=True)
+
+                with st.spinner("🤖 AI Menganalisis Semua Rasio..."):
                     prompt = f"""
-                    Nilai perusahaan:
-                    Net Sales     : {net_sales}
-                    Gross Profit  : {gross_profit}
-                    EBIT          : {ebit}
+                    Rasio Keuangan Perusahaan:
+                    {ratio_df.to_string(index=False)}
 
-                    Gross Profit Margin: {gross_margin_ratio:.2f}%
-                    EBIT Margin: {ebit_margin:.2f}%
-
-                    Jelaskan:
-                    1. Kondisi profitabilitas perusahaan
+                    Buatkan:
+                    1. Analisis kondisi keuangan
                     2. Risiko utama yang terlihat
-                    3. Rekomendasi strategis untuk manajemen
+                    3. Rekomendasi strategis
                     """
                     ai_ratio = ai_analyze(prompt)
 
+                st.subheader("🤖 AI Summary")
                 st.write(ai_ratio)
 
             except Exception as e:
-                st.error(f"❌ Gagal melakukan analisis rasio: {e}")
+                st.error(f"❌ Error: {e}")
 
 else:
-    st.info("📂 Upload file untuk memulai analisis.")
+    st.info("📂 Upload file untuk memulai analisis")
