@@ -1,200 +1,158 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
+import duckdb
 import plotly.express as px
-import re
+import os
+from dotenv import load_dotenv
 
-# ===================== CONFIG =====================
+#######################################
+# PAGE SETUP
+#######################################
 st.set_page_config(
-    page_title="AI Agent Analisis Laporan Keuangan",
-    page_icon="📊",
-    layout="wide"
+    page_title="📊 AI-Powered Dashboard Pro",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-st.title("🤖 AI Agent Analisis Laporan Keuangan")
-st.write("Upload laporan keuangan PDF / Excel dan sistem otomatis menganalisis rasio serta membuat dashboard.")
+st.title("📊 AI-Powered Dashboard Maker")
+st.caption("Prototype v2.0 - Rule-based & AI Commentary + Chat Mode")
 
-# ===================== PDF READER =====================
-try:
-    import pdfplumber
-    PDF_ENGINE = "pdfplumber"
-except:
-    from PyPDF2 import PdfReader
-    PDF_ENGINE = "PyPDF2"
+#######################################
+# LOAD API (Optional Groq)
+#######################################
+load_dotenv()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-def extract_text_from_pdf(file):
-    text = ""
-    if PDF_ENGINE == "pdfplumber":
-        with pdfplumber.open(file) as pdf:
-            for page in pdf.pages:
-                if page.extract_text():
-                    text += page.extract_text() + "\n"
-    else:
-        reader = PdfReader(file)
-        for page in reader.pages:
-            if page.extract_text():
-                text += page.extract_text() + "\n"
+if GROQ_API_KEY:
+    from groq import Groq
+    client = Groq(api_key=GROQ_API_KEY)
+else:
+    client = None
 
-    return text
+#######################################
+# AI Commentary Function
+#######################################
+def generate_ai_commentary(region_sales: pd.DataFrame) -> str:
+    """Generate commentary with Groq LLM"""
+    if not client:
+        return "⚠️ AI Commentary tidak aktif (API Key belum diatur)."
 
-# ===================== EXTRACT NUMBER =====================
-def extract_value(text, keywords):
-    pattern = rf"({keywords}).{{0,50}}?([\d.,]+)"
-    match = re.search(pattern, text, re.IGNORECASE)
+    text_summary = region_sales.to_string(index=False)
+    prompt = f"""
+    Berikut adalah data penjualan per region:
+    {text_summary}
 
-    if match:
-        value = match.group(2)
-        value = value.replace('.', '').replace(',', '.')
-        try:
-            return float(value)
-        except:
-            return None
-    return None
-
-# ===================== FILE UPLOADER =====================
-uploaded_file = st.file_uploader(
-    "📤 Upload laporan keuangan (PDF / Excel)",
-    type=["pdf", "xlsx"]
-)
-
-if uploaded_file:
-
-    st.success("✅ File berhasil diupload")
-
-    # ===================== EXCEL =====================
-    if uploaded_file.name.endswith(".xlsx"):
-        df = pd.read_excel(uploaded_file)
-
-        st.subheader("📄 Preview Data Excel")
-        st.dataframe(df)
-
-        # Auto picking common columns
-        col_map = {col.lower(): col for col in df.columns}
-
-        def find_col(keyword):
-            for k in col_map:
-                if keyword in k:
-                    return col_map[k]
-            return None
-
-        current_assets_col = find_col("lancar")
-        total_assets_col = find_col("aset")
-        liabilities_col = find_col("liabil")
-        equity_col = find_col("ekuitas")
-        revenue_col = find_col("pendapatan") or find_col("penjualan")
-        net_income_col = find_col("laba")
-
-        if all([current_assets_col, total_assets_col, liabilities_col, equity_col, revenue_col, net_income_col]):
-
-            current_assets = df[current_assets_col].sum()
-            total_assets = df[total_assets_col].sum()
-            total_liabilities = df[liabilities_col].sum()
-            equity = df[equity_col].sum()
-            revenue = df[revenue_col].sum()
-            net_income = df[net_income_col].sum()
-
-        else:
-            st.error("❌ Kolom laporan keuangan tidak terdeteksi otomatis.")
-            st.stop()
-
-    # ===================== PDF =====================
-    else:
-        text = extract_text_from_pdf(uploaded_file)
-
-        current_assets   = extract_value(text, "Aset Lancar|Aktiva Lancar")
-        total_assets     = extract_value(text, "Total Aset|Total Aktiva")
-        total_liabilities = extract_value(text, "Liabilitas|Total Liabilitas|Total Hutang")
-        equity           = extract_value(text, "Ekuitas|Modal")
-        revenue          = extract_value(text, "Pendapatan|Penjualan")
-        net_income       = extract_value(text, "Laba Bersih|Laba Tahun Berjalan")
-
-        if None in [current_assets, total_assets, total_liabilities, equity, revenue, net_income]:
-            st.error("❌ Tidak semua data bisa diekstrak otomatis dari PDF")
-            with st.expander("Check extracted text preview"):
-                st.text(text[:3000])
-            st.stop()
-
-    # ===================== RATIO CALCULATION =====================
-    current_ratio = current_assets / total_liabilities
-    debt_ratio = total_liabilities / total_assets
-    roe = net_income / equity
-    roa = net_income / total_assets
-    asset_turnover = revenue / total_assets
-
-    # ===================== DISPLAY METRIC =====================
-    st.subheader("📌 Ringkasan Nilai Keuangan")
-
-    col1, col2, col3 = st.columns(3)
-
-    col1.metric("Aset Lancar", f"{current_assets:,.0f}")
-    col2.metric("Total Aset", f"{total_assets:,.0f}")
-    col3.metric("Total Liabilitas", f"{total_liabilities:,.0f}")
-
-    col1.metric("Ekuitas", f"{equity:,.0f}")
-    col2.metric("Pendapatan", f"{revenue:,.0f}")
-    col3.metric("Laba Bersih", f"{net_income:,.0f}")
-
-    # ===================== RATIO TABLE =====================
-    ratio_data = pd.DataFrame({
-        "Rasio": [
-            "Current Ratio (Likuiditas)",
-            "Debt Ratio (Solvabilitas)",
-            "ROE (Profitabilitas)",
-            "ROA (Profitabilitas)",
-            "Total Asset Turnover (Aktivitas)"
-        ],
-        "Nilai": [
-            round(current_ratio,2),
-            round(debt_ratio,2),
-            round(roe,2),
-            round(roa,2),
-            round(asset_turnover,2)
-        ]
-    })
-
-    st.subheader("📊 Tabel Rasio Keuangan")
-    st.dataframe(ratio_data)
-
-    # ===================== GRAPH DASHBOARD =====================
-    st.subheader("📈 Dashboard Grafik Rasio")
-
-    fig = px.bar(
-        ratio_data,
-        x="Rasio",
-        y="Nilai",
-        title="Visualisasi Rasio Keuangan",
-        text_auto=True
-    )
-
-    fig.update_layout(
-        xaxis_tickangle=-40,
-        height = 500
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    # ===================== ANALISIS OTOMATIS =====================
-    st.subheader("🧠 Interpretasi Otomatis")
-
-    analisis = f"""
-    **1. Likuiditas:**
-    Current Ratio = {round(current_ratio,2)}  
-    Jika >1 artinya perusahaan memiliki kemampuan cukup untuk membayar kewajiban jangka pendek.
-
-    **2. Solvabilitas:**
-    Debt Ratio = {round(debt_ratio,2)}  
-    Semakin rendah semakin baik karena hutang lebih kecil dibanding aset.
-
-    **3. Profitabilitas:**
-    ROE = {round(roe,2)}  
-    ROA = {round(roa,2)}  
-    Menunjukkan kemampuan aset dan modal menghasilkan laba.
-
-    **4. Aktivitas:**
-    Asset Turnover = {round(asset_turnover,2)}  
-    Efisiensi aset dalam menghasilkan pendapatan.
+    Buat analisis singkat dalam bahasa Indonesia:
+    - Region mana yang dominan
+    - Region mana yang perlu perhatian
+    - Insight strategis singkat
     """
 
-    st.markdown(analisis)
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"❌ Error AI Commentary: {e}"
 
-    st.success("✅ Analisis selesai. Siap dipakai untuk tugas / skripsi / publikasi.")
+#######################################
+# DATA UPLOAD
+#######################################
+uploaded_file = st.file_uploader("📂 Upload Excel file", type=["xlsx", "xls", "csv"])
+
+if uploaded_file:
+    if uploaded_file.name.endswith(".csv"):
+        df = pd.read_csv(uploaded_file)
+    else:
+        df = pd.read_excel(uploaded_file)
+
+    st.subheader("📜 Data Preview")
+    st.dataframe(df.head())
+
+    #######################################
+    # DASHBOARD
+    #######################################
+    st.subheader("📈 Dashboard Overview")
+
+    if "Region" in df.columns and "Sales" in df.columns:
+        query = """
+        SELECT Region, SUM(Sales) as Total_Sales
+        FROM df
+        GROUP BY Region
+        ORDER BY Total_Sales DESC
+        """
+        region_sales = duckdb.sql(query).df()
+
+        # Bar chart
+        fig = px.bar(region_sales, x="Region", y="Total_Sales",
+                     title="Sales by Region", text_auto=True)
+        st.plotly_chart(fig, use_container_width=True)
+
+        #######################################
+        # RULE-BASED COMMENTARY
+        #######################################
+        st.subheader("📝 Auto Commentary (Rule-based)")
+
+        top_region = region_sales.iloc[0]["Region"]
+        top_value = region_sales.iloc[0]["Total_Sales"]
+
+        bottom_region = region_sales.iloc[-1]["Region"]
+        bottom_value = region_sales.iloc[-1]["Total_Sales"]
+
+        commentary = f"""
+        🔍 **Insights**:
+        - Region dengan penjualan tertinggi adalah **{top_region}** sebesar **{top_value:,.0f}**.
+        - Region dengan penjualan terendah adalah **{bottom_region}** sebesar **{bottom_value:,.0f}**.
+        - Gap antara region tertinggi dan terendah adalah **{(top_value - bottom_value):,.0f}**.
+        """
+        st.markdown(commentary)
+
+        #######################################
+        # AI COMMENTARY (Initial)
+        #######################################
+        st.subheader("🤖 AI Commentary")
+        ai_text = generate_ai_commentary(region_sales)
+        st.write(ai_text)
+
+        #######################################
+        # AI CHAT MODE
+        #######################################
+        st.subheader("💬 Chat dengan AI Analis")
+
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = [
+                {"role": "system", "content": "Anda adalah analis bisnis yang membantu memahami data penjualan."},
+                {"role": "assistant", "content": ai_text}  # mulai dengan hasil commentary
+            ]
+
+        # tampilkan riwayat chat
+        for msg in st.session_state.chat_history:
+            if msg["role"] == "user":
+                st.chat_message("user").write(msg["content"])
+            elif msg["role"] == "assistant":
+                st.chat_message("assistant").write(msg["content"])
+
+        # input pertanyaan baru
+        if question := st.chat_input("Tanyakan sesuatu..."):
+            st.session_state.chat_history.append({"role": "user", "content": question})
+            st.chat_message("user").write(question)
+
+            try:
+                response = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=st.session_state.chat_history,
+                    temperature=0.7
+                )
+                answer = response.choices[0].message.content
+                st.session_state.chat_history.append({"role": "assistant", "content": answer})
+                st.chat_message("assistant").write(answer)
+            except Exception as e:
+                st.error(f"❌ Error chat: {e}")
+
+    else:
+        st.warning("⚠️ Data harus memiliki kolom `Region` dan `Sales` untuk analisis.")
+else:
+    st.info("⬆️ Upload file Excel/CSV untuk memulai.")
