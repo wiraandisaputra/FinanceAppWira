@@ -7,3 +7,4 @@ PyPDF2
 plotly
 python-dotenv
 groq
+openpyxl
