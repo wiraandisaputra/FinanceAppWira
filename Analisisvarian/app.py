@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import numpy as np
 import duckdb
 import os
@@ -28,10 +29,10 @@ st.set_page_config(
 )
 
 st.title("🤖 AI Financial Super Agent – All-in-One Dashboard")
-st.caption("Excel / PDF → Auto Analysis | Variance | Scenario | Dashboard | AI Chat | Financial Ratios")
+st.caption("Excel / PDF → Auto Analysis | Variance | Scenario | Dashboard | AI Chat | Financial Ratios | Financial Distress")
 
 #############################################
-# PDF ENGINE
+# PDF READER
 #############################################
 try:
     import pdfplumber
@@ -73,6 +74,14 @@ def ai_analyze(prompt):
         return f"❌ Error AI: {e}"
 
 #############################################
+# CLEAN NUMBER FUNCTION
+#############################################
+def clean_number(value):
+    if value is None:
+        return 0
+    return float(str(value).replace(".", "").replace(",", ""))
+
+#############################################
 # FILE UPLOADER
 #############################################
 uploaded_file = st.file_uploader(
@@ -88,28 +97,28 @@ if uploaded_file:
     # PDF MODE
     ##################################################
     if file_type == "pdf":
+
         text = extract_text_from_pdf(uploaded_file)
 
         st.subheader("📄 Preview Text (PDF)")
         st.text_area("PDF Content", text[:3000], height=200)
 
-        prompt = f"""
-        Berikut isi laporan keuangan (PDF):
+        with st.spinner("🤖 AI Menganalisis PDF ..."):
+            prompt = f"""
+            Berikut isi laporan keuangan dari PDF:
 
-        {text[:3000]}
+            {text[:2000]}
 
-        Lakukan analisis:
-        - Kinerja keuangan
-        - Risiko
-        - Profitabilitas
-        - Likuiditas (jika bisa diambil)
-        - Rekomendasi strategis
-        """
+            Buatkan:
+            - Analisis kinerja
+            - Risiko keuangan
+            - Profitabilitas & likuiditas
+            - Rekomendasi strategis
+            """
 
-        with st.spinner("🤖 AI Menganalisis PDF..."):
             result = ai_analyze(prompt)
 
-        st.subheader("🤖 AI Analysis (PDF)")
+        st.subheader("🤖 AI Analysis")
         st.write(result)
 
     ##################################################
@@ -117,15 +126,12 @@ if uploaded_file:
     ##################################################
     else:
 
-        # MULTI SHEET READER
         if file_type == "csv":
             df = pd.read_csv(uploaded_file)
-            sheet_names = ["CSV File"]
             selected_sheet = "CSV File"
         else:
             sheets = pd.read_excel(uploaded_file, sheet_name=None)
-            sheet_names = list(sheets.keys())
-            selected_sheet = st.selectbox("📑 Pilih Sheet", sheet_names)
+            selected_sheet = st.selectbox("📑 Pilih Sheet", list(sheets.keys()))
             df = sheets[selected_sheet]
 
         st.subheader(f"📊 Data dari Sheet: {selected_sheet}")
@@ -135,15 +141,31 @@ if uploaded_file:
             "📊 Variance Analysis",
             "📈 Scenario Planning",
             "📍 Dashboard & AI Chat",
-            "📉 Analisis Rasio Keuangan ✅"
+            "📉 Analisis Rasio Keuangan",
+            "🚨 Financial Distress Warning"
         ])
+
+        # DICTIONARY DATA
+        data = dict(zip(df.iloc[:, 0], df.iloc[:, 1]))
+
+        net_sales = clean_number(data.get("Net Sales", 0))
+        gross_profit = clean_number(data.get("Gross Profit", 0))
+        ebit = clean_number(data.get("EBIT", 0))
+        current_assets = clean_number(data.get("Current Assets", 0))
+        inventory = clean_number(data.get("Inventory", 0))
+        cash = clean_number(data.get("Cash", 0))
+        current_liabilities = clean_number(data.get("Current Liabilities", 0))
+        total_liabilities = clean_number(data.get("Total Liabilities", 0))
+        total_equity = clean_number(data.get("Total Equity", 0))
+        total_assets = clean_number(data.get("Total Assets", 0))
+        retained_earnings = clean_number(data.get("Retained Earnings", 0))
+        market_value_equity = clean_number(data.get("Market Value Equity", 0))
 
         ##################################################
         # TAB 1 - VARIANCE ANALYSIS
         ##################################################
         with tabs[0]:
-            st.subheader("📊 Budget vs Actual Analysis")
-
+            st.subheader("📊 Budget vs Actual")
             if {"Category", "Budget", "Actual"}.issubset(df.columns):
 
                 df["Variance"] = df["Actual"] - df["Budget"]
@@ -151,43 +173,14 @@ if uploaded_file:
 
                 st.dataframe(df)
 
-                fig_bar = px.bar(
-                    df,
-                    x="Category",
-                    y="Variance",
-                    color="Variance",
-                    title="Variance by Category",
-                    text_auto=True
-                )
-                st.plotly_chart(fig_bar, use_container_width=True)
+                fig = px.bar(df, x="Category", y="Variance", color="Variance", text_auto=True)
+                st.plotly_chart(fig, use_container_width=True)
 
-                fig_line = px.line(
-                    df,
-                    x="Category",
-                    y=["Budget", "Actual"],
-                    markers=True,
-                    title="Budget vs Actual"
-                )
-                st.plotly_chart(fig_line, use_container_width=True)
-
-                with st.spinner("🤖 AI Menganalisis Variance..."):
-                    prompt = f"""
-                    Berikut data Budget vs Actual:
-
-                    {df.to_string()}
-
-                    Analisis:
-                    - Penyimpangan terbesar
-                    - Penyebab potensial
-                    - Rekomendasi manajerial
-                    """
-                    ai = ai_analyze(prompt)
-
-                st.subheader("🤖 AI Variance Commentary")
-                st.write(ai)
+                with st.spinner("🤖 AI analisis variance..."):
+                    st.write(ai_analyze(df.to_string()))
 
             else:
-                st.warning("Kolom wajib: Category, Budget, Actual")
+                st.warning("Data tidak memiliki kolom Category, Budget, Actual")
 
         ##################################################
         # TAB 2 - SCENARIO PLANNING
@@ -197,213 +190,127 @@ if uploaded_file:
 
             if {"Category", "Base Forecast"}.issubset(df.columns):
 
-                scenario_prompt = st.text_area(
-                    "Masukkan skenario (contoh: penurunan penjualan 10%, kenaikan biaya 5%)"
-                )
+                scenario_prompt = st.text_area("Masukkan skenario bisnis:")
 
                 if st.button("🚀 Generate Scenario"):
                     df["Optimistic"] = df["Base Forecast"] * np.random.uniform(1.1, 1.3, len(df))
                     df["Pessimistic"] = df["Base Forecast"] * np.random.uniform(0.7, 0.9, len(df))
-                    df["Worst Case"] = df["Base Forecast"] * np.random.uniform(0.5, 0.7, len(df))
 
                     st.dataframe(df)
 
-                    fig = px.bar(
-                        df,
-                        x="Category",
-                        y=["Base Forecast", "Optimistic", "Pessimistic", "Worst Case"],
-                        title="Scenario Analysis",
-                        barmode="group"
-                    )
-
+                    fig = px.bar(df, x="Category", y=["Base Forecast", "Optimistic", "Pessimistic"], barmode="group")
                     st.plotly_chart(fig, use_container_width=True)
 
-                    with st.spinner("🤖 AI Analyze Scenario..."):
-                        prompt = f"""
-                        Scenario Planning Result:
-                        {df.to_string()}
-
-                        Scenario input user:
-                        {scenario_prompt}
-
-                        Berikan insight, risiko & strategi bisnis.
-                        """
-                        scenario_ai = ai_analyze(prompt)
-
-                    st.subheader("🤖 AI Strategic Insight")
-                    st.write(scenario_ai)
+                    with st.spinner("🤖 AI Insight"):
+                        st.write(ai_analyze(df.to_string()))
 
             else:
                 st.warning("Kolom wajib: Category, Base Forecast")
 
         ##################################################
-        # TAB 3 - DASHBOARD + AI CHAT
+        # TAB 3 - DASHBOARD
         ##################################################
         with tabs[2]:
             st.subheader("📍 Sales Dashboard")
 
             if {"Region", "Sales"}.issubset(df.columns):
-
-                query = """
-                SELECT Region, SUM(Sales) as Total_Sales
-                FROM df
-                GROUP BY Region
-                ORDER BY Total_Sales DESC
-                """
-                region_sales = duckdb.sql(query).df()
+                region_sales = duckdb.sql("""
+                    SELECT Region, SUM(Sales) as Total_Sales
+                    FROM df
+                    GROUP BY Region
+                """).df()
 
                 fig = px.bar(region_sales, x="Region", y="Total_Sales", text_auto=True)
                 st.plotly_chart(fig, use_container_width=True)
 
-                top = region_sales.iloc[0]
-                low = region_sales.iloc[-1]
-
-                st.markdown(f"""
-                **Auto Insight:**
-                - Tertinggi: **{top.Region}** = {top.Total_Sales:,.0f}
-                - Terendah: **{low.Region}** = {low.Total_Sales:,.0f}
-                """)
-
-                with st.spinner("🤖 AI Insight..."):
-                    commentary = ai_analyze(f"""
-                    Berikut data penjualan per region:
-                    {region_sales.to_string()}
-
-                    Berikan analisis kinerja & strategi peningkatan.
-                    """)
-
-                st.subheader("🤖 AI Commentary")
-                st.write(commentary)
-
-                st.subheader("💬 AI Chat Mode")
-
-                if "chat_history" not in st.session_state:
-                    st.session_state.chat_history = [
-                        {"role": "system", "content": "Kamu adalah AI analis keuangan profesional."}
-                    ]
-
-                for msg in st.session_state.chat_history:
-                    if msg["role"] == "user":
-                        st.chat_message("user").write(msg["content"])
-                    elif msg["role"] == "assistant":
-                        st.chat_message("assistant").write(msg["content"])
-
-                if question := st.chat_input("Tanyakan sesuatu tentang data..."):
-                    st.session_state.chat_history.append({"role": "user", "content": question})
-
-                    with st.spinner("🤖 Thinking..."):
-                        response = client.chat.completions.create(
-                            model="llama-3.3-70b-versatile",
-                            messages=st.session_state.chat_history
-                        )
-
-                    answer = response.choices[0].message.content
-                    st.session_state.chat_history.append({"role": "assistant", "content": answer})
-                    st.chat_message("assistant").write(answer)
-
-            else:
-                st.warning("Kolom wajib: Region dan Sales")
+            st.subheader("💬 AI Chat")
+            if client:
+                question = st.chat_input("Tanya AI...")
+                if question:
+                    reply = ai_analyze(question)
+                    st.write(reply)
 
         ##################################################
-        # TAB 4 - ANALISIS RASIO KEUANGAN
+        # TAB 4 - RASIO KEUANGAN
         ##################################################
         with tabs[3]:
-            st.subheader("📉 Analisis Rasio Keuangan Otomatis")
 
-            try:
-                data = dict(zip(df.iloc[:, 0], df.iloc[:, 1]))
+            st.subheader("📉 Analisis Rasio Keuangan")
 
-                def clean_number(value):
-                    if value is None:
-                        return 0
-                    return float(str(value).replace(".", "").replace(",", ""))
+            gross_margin = (gross_profit / net_sales) * 100 if net_sales else 0
+            ebit_margin = (ebit / net_sales) * 100 if net_sales else 0
+            roa = (ebit / total_assets) * 100 if total_assets else 0
+            roe = (ebit / total_equity) * 100 if total_equity else 0
 
-                net_sales = clean_number(data.get("Net Sales", 0))
-                gross_profit = clean_number(data.get("Gross Profit", 0))
-                ebit = clean_number(data.get("EBIT", 0))
-                current_assets = clean_number(data.get("Current Assets", 0))
-                inventory = clean_number(data.get("Inventory", 0))
-                cash = clean_number(data.get("Cash", 0))
-                current_liabilities = clean_number(data.get("Current Liabilities", 0))
-                total_liabilities = clean_number(data.get("Total Liabilities", 0))
-                total_equity = clean_number(data.get("Total Equity", 0))
-                total_assets = clean_number(data.get("Total Assets", 0))
+            current_ratio = current_assets / current_liabilities if current_liabilities else 0
+            quick_ratio = (current_assets - inventory) / current_liabilities if current_liabilities else 0
+            cash_ratio = cash / current_liabilities if current_liabilities else 0
 
-                # PROFITABILITY
-                st.markdown("## 📌 Profitability Ratios")
-                gross_margin_ratio = (gross_profit / net_sales) * 100
-                ebit_margin = (ebit / net_sales) * 100
-                roa = (ebit / total_assets) * 100
-                roe = (ebit / total_equity) * 100
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Gross Margin (%)", f"{gross_margin:.2f}")
+            col2.metric("EBIT Margin (%)", f"{ebit_margin:.2f}")
+            col3.metric("ROA (%)", f"{roa:.2f}")
+            col4.metric("ROE (%)", f"{roe:.2f}")
 
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Gross Margin (%)", f"{gross_margin_ratio:.2f}%")
-                col2.metric("EBIT Margin (%)", f"{ebit_margin:.2f}%")
-                col3.metric("ROA (%)", f"{roa:.2f}%")
-                col4.metric("ROE (%)", f"{roe:.2f}%")
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Current Ratio", f"{current_ratio:.2f}")
+            col2.metric("Quick Ratio", f"{quick_ratio:.2f}")
+            col3.metric("Cash Ratio", f"{cash_ratio:.2f}")
 
-                # LIQUIDITY
-                st.markdown("## 📌 Liquidity Ratios")
-                current_ratio = current_assets / current_liabilities
-                quick_ratio = (current_assets - inventory) / current_liabilities
-                cash_ratio = cash / current_liabilities
+            ratio_df = pd.DataFrame({
+                "Ratio": ["Gross Margin", "EBIT Margin", "ROA", "ROE",
+                          "Current Ratio", "Quick Ratio", "Cash Ratio"],
+                "Value": [gross_margin, ebit_margin, roa, roe,
+                          current_ratio, quick_ratio, cash_ratio]
+            })
 
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Current Ratio", f"{current_ratio:.2f}")
-                col2.metric("Quick Ratio", f"{quick_ratio:.2f}")
-                col3.metric("Cash Ratio", f"{cash_ratio:.2f}")
+            fig = px.bar(ratio_df, x="Ratio", y="Value", text_auto=True)
+            st.plotly_chart(fig, use_container_width=True)
 
-                # SOLVENCY
-                st.markdown("## 📌 Solvency Ratios")
-                debt_to_asset = total_liabilities / total_assets
-                debt_to_equity = total_liabilities / total_equity
-                equity_ratio = total_equity / total_assets
+            with st.spinner("🤖 AI interpretation"):
+                st.write(ai_analyze(ratio_df.to_string()))
 
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Debt to Asset", f"{debt_to_asset:.2f}")
-                col2.metric("Debt to Equity", f"{debt_to_equity:.2f}")
-                col3.metric("Equity Ratio", f"{equity_ratio:.2f}")
+        ##################################################
+        # TAB 5 - FINANCIAL DISTRESS
+        ##################################################
+        with tabs[4]:
 
-                ratio_df = pd.DataFrame({
-                    "Ratio": [
-                        "Gross Margin", "EBIT Margin", "ROA", "ROE",
-                        "Current Ratio", "Quick Ratio", "Cash Ratio",
-                        "Debt to Asset", "Debt to Equity", "Equity Ratio"
-                    ],
-                    "Value": [
-                        gross_margin_ratio, ebit_margin, roa, roe,
-                        current_ratio, quick_ratio, cash_ratio,
-                        debt_to_asset, debt_to_equity, equity_ratio
-                    ]
-                })
+            st.subheader("🚨 Financial Distress Warning (Altman Z-Score)")
 
-                fig_all = px.bar(
-                    ratio_df,
-                    x="Ratio",
-                    y="Value",
-                    title="📊 Financial Ratios Overview",
-                    text_auto=True
-                )
+            X1 = (current_assets - current_liabilities) / total_assets if total_assets else 0
+            X2 = retained_earnings / total_assets if total_assets else 0
+            X3 = ebit / total_assets if total_assets else 0
+            X4 = (market_value_equity if market_value_equity else total_equity) / total_liabilities if total_liabilities else 0
+            X5 = net_sales / total_assets if total_assets else 0
 
-                st.plotly_chart(fig_all, use_container_width=True)
+            if market_value_equity:
+                z_score = 1.2*X1 + 1.4*X2 + 3.3*X3 + 0.6*X4 + 1.0*X5
+                safe, gray = 2.99, 1.81
+            else:
+                z_score = 0.717*X1 + 0.847*X2 + 3.107*X3 + 0.420*X4 + 0.998*X5
+                safe, gray = 2.9, 1.23
 
-                with st.spinner("🤖 AI Menganalisis Semua Rasio..."):
-                    prompt = f"""
-                    Rasio Keuangan Perusahaan:
-                    {ratio_df.to_string(index=False)}
+            if z_score > safe:
+                status = "🟢 HIJAU (Sehat)"
+            elif z_score >= gray:
+                status = "🟡 KUNING (Waspada)"
+            else:
+                status = "🔴 MERAH (Distress)"
 
-                    Buatkan:
-                    1. Analisis kondisi keuangan
-                    2. Risiko utama yang terlihat
-                    3. Rekomendasi strategis
-                    """
-                    ai_ratio = ai_analyze(prompt)
+            st.metric("Altman Z-Score", f"{z_score:.2f}")
+            st.subheader(status)
 
-                st.subheader("🤖 AI Summary")
-                st.write(ai_ratio)
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=z_score,
+                title={'text': 'Financial Distress Level'},
+                gauge={'axis': {'range': [-2, 6]}}
+            ))
 
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
+            st.plotly_chart(fig, use_container_width=True)
+
+            with st.spinner("🤖 AI Risk Analysis"):
+                st.write(ai_analyze(f"Altman Z-Score = {z_score}, Status = {status}"))
 
 else:
-    st.info("📂 Upload file untuk memulai analisis")
+    st.info("Silahkan upload file untuk memulai analisis")
