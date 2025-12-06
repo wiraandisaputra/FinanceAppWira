@@ -1,221 +1,200 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import numpy as np
+import plotly.express as px
 import re
-import io
 
-st.set_page_config(page_title="AI Agent Analisis Keuangan", layout="wide")
-st.title("📊 AI Agent – Analisis Laporan Keuangan Otomatis")
-st.write("Upload laporan keuangan dalam format **PDF atau XLSX** atau isi manual untuk mendapatkan analisis rasio & grafik.")
+# ===================== CONFIG =====================
+st.set_page_config(
+    page_title="AI Agent Analisis Laporan Keuangan",
+    page_icon="📊",
+    layout="wide"
+)
 
-# ======================== FUNGSI AMBIL ANGKA =========================
-def clean_number(value):
-    try:
-        if isinstance(value, str):
-            value = value.replace(".", "").replace(",", ".")
-        return float(value)
-    except:
-        return 0
+st.title("🤖 AI Agent Analisis Laporan Keuangan")
+st.write("Upload laporan keuangan PDF / Excel dan sistem otomatis menganalisis rasio serta membuat dashboard.")
 
-def extract_value(text, keywords):
-    if text is None:
-        return 0
-    lines = text.split("\n")
-    for line in lines:
-        for key in keywords.split("|"):
-            if key.lower() in line.lower():
-                numbers = re.findall(r'\d[\d.,]*', line)
-                if numbers:
-                    return clean_number(numbers[-1])
-    return 0
+# ===================== PDF READER =====================
+try:
+    import pdfplumber
+    PDF_ENGINE = "pdfplumber"
+except:
+    from PyPDF2 import PdfReader
+    PDF_ENGINE = "PyPDF2"
 
-# ======================== UPLOAD FILE =========================
-st.subheader("📂 Upload Laporan Keuangan (PDF / XLSX)")
-
-uploaded_file = st.file_uploader("Upload file laporan keuangan", type=["pdf","xlsx"])
-
-pdf_text = ""
-excel_data = None
-
-if uploaded_file is not None:
-
-    # JIKA PDF
-    if uploaded_file.name.endswith(".pdf"):
-        try:
-            import pdfplumber
-            with pdfplumber.open(uploaded_file) as pdf:
-                for page in pdf.pages:
-                    text = page.extract_text()
-                    if text:
-                        pdf_text += text + "\n"
-
-            st.success("✅ PDF berhasil dibaca")
-
-            with st.expander("Lihat sebagian isi PDF"):
-                st.text(pdf_text[:4000])
-
-        except Exception as e:
-            st.error(f"Gagal membaca PDF : {e}")
-
-    # JIKA EXCEL
-    if uploaded_file.name.endswith(".xlsx"):
-        try:
-            excel_data = pd.read_excel(uploaded_file)
-            st.success("✅ File Excel berhasil dibaca")
-
-            with st.expander("Preview Data Excel"):
-                st.dataframe(excel_data.head(20))
-
-        except Exception as e:
-            st.error(f"Gagal membaca Excel : {e}")
-
-
-# ======================== INPUT MANUAL =========================
-st.subheader("✏️ Input Data Manual (Jika File tidak lengkap)")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    current_assets = st.number_input("Aset Lancar", min_value=0.0)
-    inventory = st.number_input("Persediaan", min_value=0.0)
-
-with col2:
-    current_liabilities = st.number_input("Liabilitas Lancar", min_value=0.0)
-    total_liabilities = st.number_input("Total Liabilitas", min_value=0.0)
-
-with col3:
-    total_assets = st.number_input("Total Aset", min_value=0.0)
-    total_equity = st.number_input("Ekuitas", min_value=0.0)
-
-
-revenue = st.number_input("Pendapatan / Penjualan", min_value=0.0)
-net_income = st.number_input("Laba Bersih", min_value=0.0)
-
-
-# ======================== AMBIL DARI PDF =========================
-if pdf_text != "":
-
-    if current_assets == 0:
-        current_assets = extract_value(pdf_text, "Aset Lancar|Current Assets")
-
-    if current_liabilities == 0:
-        current_liabilities = extract_value(pdf_text, "Liabilitas Lancar|Utang Lancar|Current Liabilities")
-
-    if total_assets == 0:
-        total_assets = extract_value(pdf_text, "Total Aset|Total Assets")
-
-    if total_liabilities == 0:
-        total_liabilities = extract_value(pdf_text, "Total Liabilitas|Total Liabilities")
-
-    if net_income == 0:
-        net_income = extract_value(pdf_text, "Laba Bersih|Net Income|Profit")
-
-    if revenue == 0:
-        revenue = extract_value(pdf_text, "Pendapatan|Penjualan|Revenue|Sales")
-
-
-# ======================== AMBIL DARI EXCEL =========================
-if excel_data is not None:
-
-    for col in excel_data.columns:
-        col_str = str(col).lower()
-
-        if "aset lancar" in col_str:
-            current_assets = clean_number(excel_data[col].sum())
-
-        if "liabilitas lancar" in col_str or "utang lancar" in col_str:
-            current_liabilities = clean_number(excel_data[col].sum())
-
-        if "total aset" in col_str:
-            total_assets = clean_number(excel_data[col].sum())
-
-        if "total liabilitas" in col_str:
-            total_liabilities = clean_number(excel_data[col].sum())
-
-        if "laba bersih" in col_str:
-            net_income = clean_number(excel_data[col].sum())
-
-        if "pendapatan" in col_str or "penjualan" in col_str:
-            revenue = clean_number(excel_data[col].sum())
-
-
-# ======================== ANALISIS =========================
-if st.button("🚀 Analisis Rasio Keuangan"):
-
-    if current_liabilities == 0 or total_assets == 0 or revenue == 0:
-        st.error("⚠️ Data belum lengkap. Minimal isi: Aset, Liabilitas & Pendapatan")
+def extract_text_from_pdf(file):
+    text = ""
+    if PDF_ENGINE == "pdfplumber":
+        with pdfplumber.open(file) as pdf:
+            for page in pdf.pages:
+                if page.extract_text():
+                    text += page.extract_text() + "\n"
     else:
+        reader = PdfReader(file)
+        for page in reader.pages:
+            if page.extract_text():
+                text += page.extract_text() + "\n"
 
-        st.subheader("📌 HASIL ANALISIS RASIO")
+    return text
 
-        # 1. LIKUIDITAS
-        current_ratio = current_assets / current_liabilities
-        quick_ratio = (current_assets - inventory) / current_liabilities
+# ===================== EXTRACT NUMBER =====================
+def extract_value(text, keywords):
+    pattern = rf"({keywords}).{{0,50}}?([\d.,]+)"
+    match = re.search(pattern, text, re.IGNORECASE)
 
-        # 2. SOLVABILITAS
-        debt_ratio = total_liabilities / total_assets
-        debt_to_equity = total_liabilities / total_equity if total_equity != 0 else 0
+    if match:
+        value = match.group(2)
+        value = value.replace('.', '').replace(',', '.')
+        try:
+            return float(value)
+        except:
+            return None
+    return None
 
-        # 3. PROFITABILITAS
-        net_profit_margin = (net_income / revenue) * 100
-        roa = (net_income / total_assets) * 100
+# ===================== FILE UPLOADER =====================
+uploaded_file = st.file_uploader(
+    "📤 Upload laporan keuangan (PDF / Excel)",
+    type=["pdf", "xlsx"]
+)
 
-        # 4. AKTIVITAS
-        asset_turnover = revenue / total_assets
+if uploaded_file:
 
+    st.success("✅ File berhasil diupload")
 
-        col1, col2, col3, col4 = st.columns(4)
+    # ===================== EXCEL =====================
+    if uploaded_file.name.endswith(".xlsx"):
+        df = pd.read_excel(uploaded_file)
 
-        col1.metric("Current Ratio", round(current_ratio,2))
-        col1.metric("Quick Ratio", round(quick_ratio,2))
+        st.subheader("📄 Preview Data Excel")
+        st.dataframe(df)
 
-        col2.metric("Debt Ratio", round(debt_ratio,2))
-        col2.metric("Debt to Equity", round(debt_to_equity,2))
+        # Auto picking common columns
+        col_map = {col.lower(): col for col in df.columns}
 
-        col3.metric("Net Profit Margin (%)", round(net_profit_margin,2))
-        col3.metric("ROA (%)", round(roa,2))
+        def find_col(keyword):
+            for k in col_map:
+                if keyword in k:
+                    return col_map[k]
+            return None
 
-        col4.metric("Asset Turnover", round(asset_turnover,2))
+        current_assets_col = find_col("lancar")
+        total_assets_col = find_col("aset")
+        liabilities_col = find_col("liabil")
+        equity_col = find_col("ekuitas")
+        revenue_col = find_col("pendapatan") or find_col("penjualan")
+        net_income_col = find_col("laba")
 
+        if all([current_assets_col, total_assets_col, liabilities_col, equity_col, revenue_col, net_income_col]):
 
-        # ======================== VISUALISASI =========================
-        st.subheader("📊 Dashboard Grafik Rasio")
+            current_assets = df[current_assets_col].sum()
+            total_assets = df[total_assets_col].sum()
+            total_liabilities = df[liabilities_col].sum()
+            equity = df[equity_col].sum()
+            revenue = df[revenue_col].sum()
+            net_income = df[net_income_col].sum()
 
-        data = {
-            "Likuiditas": current_ratio,
-            "Solvabilitas": debt_ratio,
-            "Profitabilitas": net_profit_margin,
-            "Aktivitas": asset_turnover
-        }
-
-        df = pd.DataFrame(list(data.items()), columns=["Rasio","Nilai"])
-
-        fig, ax = plt.subplots(figsize=(8,5))
-        ax.bar(df["Rasio"], df["Nilai"])
-        ax.set_title("Grafik Rasio Keuangan")
-        ax.set_ylabel("Nilai Rasio")
-        st.pyplot(fig)
-
-
-        # ======================== KESIMPULAN =========================
-        st.subheader("📢 Insight Otomatis")
-
-        if current_ratio >= 1.5:
-            st.success("Likuiditas perusahaan sangat baik")
         else:
-            st.warning("Likuiditas perusahaan rendah")
+            st.error("❌ Kolom laporan keuangan tidak terdeteksi otomatis.")
+            st.stop()
 
-        if debt_ratio <= 0.6:
-            st.success("Struktur modal cukup sehat")
-        else:
-            st.warning("Perusahaan terlalu bergantung pada utang")
+    # ===================== PDF =====================
+    else:
+        text = extract_text_from_pdf(uploaded_file)
 
-        if net_profit_margin >= 10:
-            st.success("Profitabilitas sangat baik")
-        else:
-            st.warning("Keuntungan perusahaan rendah")
+        current_assets   = extract_value(text, "Aset Lancar|Aktiva Lancar")
+        total_assets     = extract_value(text, "Total Aset|Total Aktiva")
+        total_liabilities = extract_value(text, "Liabilitas|Total Liabilitas|Total Hutang")
+        equity           = extract_value(text, "Ekuitas|Modal")
+        revenue          = extract_value(text, "Pendapatan|Penjualan")
+        net_income       = extract_value(text, "Laba Bersih|Laba Tahun Berjalan")
 
-        if asset_turnover >= 1:
-            st.success("Aset digunakan secara efisien")
-        else:
-            st.warning("Perputaran aset belum optimal")
+        if None in [current_assets, total_assets, total_liabilities, equity, revenue, net_income]:
+            st.error("❌ Tidak semua data bisa diekstrak otomatis dari PDF")
+            with st.expander("Check extracted text preview"):
+                st.text(text[:3000])
+            st.stop()
+
+    # ===================== RATIO CALCULATION =====================
+    current_ratio = current_assets / total_liabilities
+    debt_ratio = total_liabilities / total_assets
+    roe = net_income / equity
+    roa = net_income / total_assets
+    asset_turnover = revenue / total_assets
+
+    # ===================== DISPLAY METRIC =====================
+    st.subheader("📌 Ringkasan Nilai Keuangan")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Aset Lancar", f"{current_assets:,.0f}")
+    col2.metric("Total Aset", f"{total_assets:,.0f}")
+    col3.metric("Total Liabilitas", f"{total_liabilities:,.0f}")
+
+    col1.metric("Ekuitas", f"{equity:,.0f}")
+    col2.metric("Pendapatan", f"{revenue:,.0f}")
+    col3.metric("Laba Bersih", f"{net_income:,.0f}")
+
+    # ===================== RATIO TABLE =====================
+    ratio_data = pd.DataFrame({
+        "Rasio": [
+            "Current Ratio (Likuiditas)",
+            "Debt Ratio (Solvabilitas)",
+            "ROE (Profitabilitas)",
+            "ROA (Profitabilitas)",
+            "Total Asset Turnover (Aktivitas)"
+        ],
+        "Nilai": [
+            round(current_ratio,2),
+            round(debt_ratio,2),
+            round(roe,2),
+            round(roa,2),
+            round(asset_turnover,2)
+        ]
+    })
+
+    st.subheader("📊 Tabel Rasio Keuangan")
+    st.dataframe(ratio_data)
+
+    # ===================== GRAPH DASHBOARD =====================
+    st.subheader("📈 Dashboard Grafik Rasio")
+
+    fig = px.bar(
+        ratio_data,
+        x="Rasio",
+        y="Nilai",
+        title="Visualisasi Rasio Keuangan",
+        text_auto=True
+    )
+
+    fig.update_layout(
+        xaxis_tickangle=-40,
+        height = 500
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ===================== ANALISIS OTOMATIS =====================
+    st.subheader("🧠 Interpretasi Otomatis")
+
+    analisis = f"""
+    **1. Likuiditas:**
+    Current Ratio = {round(current_ratio,2)}  
+    Jika >1 artinya perusahaan memiliki kemampuan cukup untuk membayar kewajiban jangka pendek.
+
+    **2. Solvabilitas:**
+    Debt Ratio = {round(debt_ratio,2)}  
+    Semakin rendah semakin baik karena hutang lebih kecil dibanding aset.
+
+    **3. Profitabilitas:**
+    ROE = {round(roe,2)}  
+    ROA = {round(roa,2)}  
+    Menunjukkan kemampuan aset dan modal menghasilkan laba.
+
+    **4. Aktivitas:**
+    Asset Turnover = {round(asset_turnover,2)}  
+    Efisiensi aset dalam menghasilkan pendapatan.
+    """
+
+    st.markdown(analisis)
+
+    st.success("✅ Analisis selesai. Siap dipakai untuk tugas / skripsi / publikasi.")
