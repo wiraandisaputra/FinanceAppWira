@@ -35,6 +35,62 @@ uploaded_file = st.file_uploader("📂 Upload your dataset (Excel format)", type
 if uploaded_file:
     # Read the Excel file
     df = pd.read_excel(uploaded_file)
+    st.subheader("📌 Financial Ratio Analysis")
+
+required_cols = [
+    "Current Assets", "Current Liabilities",
+    "Total Assets", "Total Liabilities",
+    "Equity", "Revenue", "COGS",
+    "Net Income", "Interest Expense", "Inventory", "Receivables"
+]
+
+if all(col in df.columns for col in required_cols):
+
+    # LIQUIDITY
+    df["Current Ratio"] = df["Current Assets"] / df["Current Liabilities"]
+    df["Quick Ratio"] = (df["Current Assets"] - df["Inventory"]) / df["Current Liabilities"]
+    df["Cash Ratio"] = df["Current Assets"] * 0.2 / df["Current Liabilities"]  # asumsi kas 20%
+
+    # SOLVENCY
+    df["Debt to Asset"] = df["Total Liabilities"] / df["Total Assets"]
+    df["Debt to Equity"] = df["Total Liabilities"] / df["Equity"]
+    df["Interest Coverage"] = (df["Net Income"] + df["Interest Expense"]) / df["Interest Expense"]
+
+    # PROFITABILITY
+    df["ROA (%)"] = (df["Net Income"] / df["Total Assets"]) * 100
+    df["ROE (%)"] = (df["Net Income"] / df["Equity"]) * 100
+    df["Net Profit Margin (%)"] = (df["Net Income"] / df["Revenue"]) * 100
+    df["Gross Profit Margin (%)"] = ((df["Revenue"] - df["COGS"]) / df["Revenue"]) * 100
+
+    # ACTIVITY
+    df["Total Asset Turnover"] = df["Revenue"] / df["Total Assets"]
+    df["Inventory Turnover"] = df["COGS"] / df["Inventory"]
+    df["Receivable Turnover"] = df["Revenue"] / df["Receivables"]
+
+    # Show table
+    st.dataframe(df[[
+        "Current Ratio","Quick Ratio","Cash Ratio",
+        "Debt to Asset","Debt to Equity","Interest Coverage",
+        "ROA (%)","ROE (%)","Net Profit Margin (%)","Gross Profit Margin (%)",
+        "Total Asset Turnover","Inventory Turnover","Receivable Turnover"
+    ]])
+
+    # Charts
+    st.subheader("📈 Liquidity Ratios")
+    st.line_chart(df[["Current Ratio","Quick Ratio","Cash Ratio"]])
+
+    st.subheader("📈 Solvency Ratios")
+    st.line_chart(df[["Debt to Asset","Debt to Equity","Interest Coverage"]])
+
+    st.subheader("📈 Profitability Ratios")
+    st.line_chart(df[["ROA (%)","ROE (%)","Net Profit Margin (%)"]])
+
+    st.subheader("📈 Activity Ratios")
+    st.line_chart(df[["Total Asset Turnover","Inventory Turnover","Receivable Turnover"]])
+
+else:
+    st.warning("Dataset belum memiliki semua kolom untuk menghitung rasio keuangan.")
+
 
     # Check for required columns
     required_columns = ["Category", "Base Forecast"]
