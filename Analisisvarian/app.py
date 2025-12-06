@@ -350,6 +350,85 @@ if uploaded_file:
 
                 Jelaskan risiko kebangkrutan dan langkah pencegahan.
                 """))
+        ##################################################
+        # ✅ GLOBAL AI CHAT – BISA NANYA APA SAJA
+        ##################################################
 
+        st.markdown("---")
+        st.subheader("💬 Tanya AI tentang semua hasil analisis di atas")
+
+        if "global_chat" not in st.session_state:
+            st.session_state.global_chat = []
+
+        # Konteks lengkap untuk AI
+        context = f"""
+        DATA LAPORAN KEUANGAN:
+        Net Sales            : {net_sales}
+        Gross Profit         : {gross_profit}
+        EBIT                 : {ebit}
+        Total Assets         : {total_assets}
+        Total Liabilities    : {total_liabilities}
+        Total Equity         : {total_equity}
+        Current Assets       : {current_assets}
+        Current Liabilities  : {current_liabilities}
+        Inventory            : {inventory}
+        Cash                 : {cash}
+
+        HASIL RASIO:
+        Gross Margin (%) : {gross_margin:.2f}
+        EBIT Margin (%)  : {ebit_margin:.2f}
+        ROA (%)           : {roa:.2f}
+        ROE (%)           : {roe:.2f}
+        Current Ratio     : {current_ratio:.2f}
+        Quick Ratio       : {quick_ratio:.2f}
+        Cash Ratio         : {cash_ratio:.2f}
+
+        HASIL FINANCIAL DISTRESS:
+        Altman Z-Score     : {z_score:.2f}
+        Status Finansial   : {status}
+
+        Kamu adalah analis keuangan profesional.
+        Gunakan data ini untuk menjawab pertanyaan user secara akurat.
+        """
+
+        # Tampilkan riwayat percakapan
+        for chat in st.session_state.global_chat:
+            if chat["role"] == "user":
+                st.chat_message("user").write(chat["content"])
+            else:
+                st.chat_message("assistant").write(chat["content"])
+
+        # Input user
+        user_question = st.chat_input("Contoh: Kenapa ROA saya rendah? Apa yang harus saya perbaiki?")
+
+        if user_question:
+
+            st.session_state.global_chat.append({
+                "role": "user",
+                "content": user_question
+            })
+
+            with st.spinner("🤖 AI sedang menganalisis pertanyaan kamu..."):
+
+                prompt_ai = f"""
+                {context}
+
+                Pertanyaan:
+                {user_question}
+
+                Berikan jawaban yang:
+                - Berdasarkan data di atas
+                - Bahasa Indonesia
+                - Profesional & mudah dipahami
+                """
+
+                ai_reply = ai_analyze(prompt_ai)
+
+            st.session_state.global_chat.append({
+                "role": "assistant",
+                "content": ai_reply
+            })
+
+            st.chat_message("assistant").write(ai_reply)
 else:
     st.info("Silakan upload laporan keuangan untuk memulai analisis")
