@@ -8,3 +8,6 @@ plotly
 python-dotenv
 groq
 openpyxl
+duckdb
+plotly>=5.11.0
+python-dotenv
