@@ -28,8 +28,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🤖 AI Financial Super Agent – All-in-One Dashboard")
-st.caption("Excel / PDF → Auto Analysis | Variance | Scenario | Dashboard | AI Chat | Financial Ratios | Financial Distress")
+st.title("🤖 AI Financial Super Agent")
+st.caption("Upload Excel / PDF → Analisis Otomatis | Rasio | Distress | AI Insight")
 
 #############################################
 # PDF READER
@@ -74,12 +74,12 @@ def ai_analyze(prompt):
         return f"❌ Error AI: {e}"
 
 #############################################
-# CLEAN NUMBER FUNCTION
+# CLEAN NUMBER
 #############################################
 def clean_number(value):
     if value is None:
         return 0
-    return float(str(value).replace(".", "").replace(",", ""))
+    return float(str(value).replace("Rp", "").replace(".", "").replace(",", "").strip())
 
 #############################################
 # FILE UPLOADER
@@ -100,25 +100,25 @@ if uploaded_file:
 
         text = extract_text_from_pdf(uploaded_file)
 
-        st.subheader("📄 Preview Text (PDF)")
-        st.text_area("PDF Content", text[:3000], height=200)
+        st.subheader("📄 Isi Dokumen (PDF)")
+        st.text_area("Hasil ekstraksi", text[:3000], height=250)
 
-        with st.spinner("🤖 AI Menganalisis PDF ..."):
+        with st.spinner("🤖 AI sedang menganalisis laporan PDF..."):
             prompt = f"""
-            Berikut isi laporan keuangan dari PDF:
+            Berikut isi laporan keuangan dari file PDF:
 
             {text[:2000]}
 
-            Buatkan:
-            - Analisis kinerja
-            - Risiko keuangan
-            - Profitabilitas & likuiditas
-            - Rekomendasi strategis
+            Tolong lakukan:
+            1. Analisis kinerja keuangan
+            2. Risiko utama perusahaan
+            3. Analisis profitabilitas & likuiditas
+            4. Rekomendasi strategis manajemen
             """
 
             result = ai_analyze(prompt)
 
-        st.subheader("🤖 AI Analysis")
+        st.subheader("🤖 Hasil Analisis AI")
         st.write(result)
 
     ##################################################
@@ -128,24 +128,24 @@ if uploaded_file:
 
         if file_type == "csv":
             df = pd.read_csv(uploaded_file)
-            selected_sheet = "CSV File"
+            selected_sheet = "CSV"
         else:
             sheets = pd.read_excel(uploaded_file, sheet_name=None)
             selected_sheet = st.selectbox("📑 Pilih Sheet", list(sheets.keys()))
             df = sheets[selected_sheet]
 
-        st.subheader(f"📊 Data dari Sheet: {selected_sheet}")
+        st.subheader(f"📊 Data: {selected_sheet}")
         st.dataframe(df.head(50))
 
         tabs = st.tabs([
             "📊 Variance Analysis",
             "📈 Scenario Planning",
-            "📍 Dashboard & AI Chat",
+            "📍 Dashboard + AI",
             "📉 Analisis Rasio Keuangan",
-            "🚨 Financial Distress Warning"
+            "🚨 Financial Distress"
         ])
 
-        # DICTIONARY DATA
+        # KONVERSI KE DICTIONARY
         data = dict(zip(df.iloc[:, 0], df.iloc[:, 1]))
 
         net_sales = clean_number(data.get("Net Sales", 0))
@@ -162,10 +162,12 @@ if uploaded_file:
         market_value_equity = clean_number(data.get("Market Value Equity", 0))
 
         ##################################################
-        # TAB 1 - VARIANCE ANALYSIS
+        # TAB 1 - VARIANCE
         ##################################################
         with tabs[0]:
-            st.subheader("📊 Budget vs Actual")
+
+            st.subheader("📊 Analisis Variance (Budget vs Actual)")
+
             if {"Category", "Budget", "Actual"}.issubset(df.columns):
 
                 df["Variance"] = df["Actual"] - df["Budget"]
@@ -173,62 +175,84 @@ if uploaded_file:
 
                 st.dataframe(df)
 
-                fig = px.bar(df, x="Category", y="Variance", color="Variance", text_auto=True)
+                fig = px.bar(df, x="Category", y="Variance", text_auto=True)
                 st.plotly_chart(fig, use_container_width=True)
 
-                with st.spinner("🤖 AI analisis variance..."):
-                    st.write(ai_analyze(df.to_string()))
+                with st.spinner("🤖 AI menganalisis penyimpangan..."):
+                    st.write(ai_analyze(f"""
+                    Data variance:
+                    {df.to_string()}
+
+                    Jelaskan:
+                    - Penyimpangan terbesar
+                    - Penyebab kemungkinan
+                    - Solusi untuk manajemen
+                    """))
 
             else:
-                st.warning("Data tidak memiliki kolom Category, Budget, Actual")
+                st.warning("Kolom wajib: Category, Budget, Actual")
 
         ##################################################
-        # TAB 2 - SCENARIO PLANNING
+        # TAB 2 - SCENARIO
         ##################################################
         with tabs[1]:
-            st.subheader("📈 Scenario Planning")
+
+            st.subheader("📈 Simulasi Skenario")
 
             if {"Category", "Base Forecast"}.issubset(df.columns):
 
-                scenario_prompt = st.text_area("Masukkan skenario bisnis:")
+                skenario = st.text_area("Masukkan skenario bisnis (contoh: penjualan turun 10%)")
 
-                if st.button("🚀 Generate Scenario"):
-                    df["Optimistic"] = df["Base Forecast"] * np.random.uniform(1.1, 1.3, len(df))
-                    df["Pessimistic"] = df["Base Forecast"] * np.random.uniform(0.7, 0.9, len(df))
+                if st.button("📊 Jalankan Skenario"):
+
+                    df["Optimis"] = df["Base Forecast"] * np.random.uniform(1.1, 1.3, len(df))
+                    df["Pesimis"] = df["Base Forecast"] * np.random.uniform(0.7, 0.9, len(df))
 
                     st.dataframe(df)
 
-                    fig = px.bar(df, x="Category", y=["Base Forecast", "Optimistic", "Pessimistic"], barmode="group")
+                    fig = px.bar(df, x="Category", y=["Base Forecast", "Optimis", "Pesimis"], barmode="group")
                     st.plotly_chart(fig, use_container_width=True)
 
-                    with st.spinner("🤖 AI Insight"):
-                        st.write(ai_analyze(df.to_string()))
+                    with st.spinner("🤖 AI menganalisis skenario..."):
+                        st.write(ai_analyze(f"""
+                        Hasil simulasi:
+                        {df.to_string()}
+
+                        Skenario: {skenario}
+
+                        Berikan: risiko & strategi
+                        """))
 
             else:
-                st.warning("Kolom wajib: Category, Base Forecast")
+                st.warning("Kolom wajib: Category dan Base Forecast")
 
         ##################################################
         # TAB 3 - DASHBOARD
         ##################################################
         with tabs[2]:
-            st.subheader("📍 Sales Dashboard")
+
+            st.subheader("📍 Dashboard Penjualan")
 
             if {"Region", "Sales"}.issubset(df.columns):
+
                 region_sales = duckdb.sql("""
                     SELECT Region, SUM(Sales) as Total_Sales
                     FROM df
                     GROUP BY Region
+                    ORDER BY Total_Sales DESC
                 """).df()
+
+                st.dataframe(region_sales)
 
                 fig = px.bar(region_sales, x="Region", y="Total_Sales", text_auto=True)
                 st.plotly_chart(fig, use_container_width=True)
 
-            st.subheader("💬 AI Chat")
+            st.subheader("💬 Chat dengan AI")
+
             if client:
-                question = st.chat_input("Tanya AI...")
+                question = st.chat_input("Tanya AI tentang data keuangan...")
                 if question:
-                    reply = ai_analyze(question)
-                    st.write(reply)
+                    st.write(ai_analyze(question))
 
         ##################################################
         # TAB 4 - RASIO KEUANGAN
@@ -246,36 +270,46 @@ if uploaded_file:
             quick_ratio = (current_assets - inventory) / current_liabilities if current_liabilities else 0
             cash_ratio = cash / current_liabilities if current_liabilities else 0
 
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Gross Margin (%)", f"{gross_margin:.2f}")
-            col2.metric("EBIT Margin (%)", f"{ebit_margin:.2f}")
-            col3.metric("ROA (%)", f"{roa:.2f}")
-            col4.metric("ROE (%)", f"{roe:.2f}")
-
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Current Ratio", f"{current_ratio:.2f}")
-            col2.metric("Quick Ratio", f"{quick_ratio:.2f}")
-            col3.metric("Cash Ratio", f"{cash_ratio:.2f}")
-
             ratio_df = pd.DataFrame({
-                "Ratio": ["Gross Margin", "EBIT Margin", "ROA", "ROE",
-                          "Current Ratio", "Quick Ratio", "Cash Ratio"],
-                "Value": [gross_margin, ebit_margin, roa, roe,
-                          current_ratio, quick_ratio, cash_ratio]
+                "Rasio": [
+                    "Gross Margin (%)",
+                    "EBIT Margin (%)",
+                    "ROA (%)",
+                    "ROE (%)",
+                    "Current Ratio",
+                    "Quick Ratio",
+                    "Cash Ratio"
+                ],
+                "Nilai": [
+                    gross_margin,
+                    ebit_margin,
+                    roa,
+                    roe,
+                    current_ratio,
+                    quick_ratio,
+                    cash_ratio
+                ]
             })
 
-            fig = px.bar(ratio_df, x="Ratio", y="Value", text_auto=True)
+            st.dataframe(ratio_df)
+
+            fig = px.bar(ratio_df, x="Rasio", y="Nilai", text_auto=True)
             st.plotly_chart(fig, use_container_width=True)
 
-            with st.spinner("🤖 AI interpretation"):
-                st.write(ai_analyze(ratio_df.to_string()))
+            with st.spinner("🤖 Analisis AI terhadap rasio..."):
+                st.write(ai_analyze(f"""
+                Data rasio keuangan:
+                {ratio_df.to_string(index=False)}
+
+                Tolong jelaskan kondisi perusahaan dan berikan rekomendasi.
+                """))
 
         ##################################################
-        # TAB 5 - FINANCIAL DISTRESS
+        # TAB 5 - DISTRESS
         ##################################################
         with tabs[4]:
 
-            st.subheader("🚨 Financial Distress Warning (Altman Z-Score)")
+            st.subheader("🚨 Peringatan Financial Distress (Altman Z-Score)")
 
             X1 = (current_assets - current_liabilities) / total_assets if total_assets else 0
             X2 = retained_earnings / total_assets if total_assets else 0
@@ -291,11 +325,11 @@ if uploaded_file:
                 safe, gray = 2.9, 1.23
 
             if z_score > safe:
-                status = "🟢 HIJAU (Sehat)"
+                status = "🟢 HIJAU - AMAN"
             elif z_score >= gray:
-                status = "🟡 KUNING (Waspada)"
+                status = "🟡 KUNING - WASPADA"
             else:
-                status = "🔴 MERAH (Distress)"
+                status = "🔴 MERAH - BAHAYA"
 
             st.metric("Altman Z-Score", f"{z_score:.2f}")
             st.subheader(status)
@@ -303,14 +337,19 @@ if uploaded_file:
             fig = go.Figure(go.Indicator(
                 mode="gauge+number",
                 value=z_score,
-                title={'text': 'Financial Distress Level'},
+                title={'text': 'Risiko Kebangkrutan'},
                 gauge={'axis': {'range': [-2, 6]}}
             ))
 
             st.plotly_chart(fig, use_container_width=True)
 
-            with st.spinner("🤖 AI Risk Analysis"):
-                st.write(ai_analyze(f"Altman Z-Score = {z_score}, Status = {status}"))
+            with st.spinner("🤖 AI menganalisis risiko..."):
+                st.write(ai_analyze(f"""
+                Nilai Altman Z-Score = {z_score}
+                Status = {status}
+
+                Jelaskan risiko kebangkrutan dan langkah pencegahan.
+                """))
 
 else:
-    st.info("Silahkan upload file untuk memulai analisis")
+    st.info("Silakan upload laporan keuangan untuk memulai analisis")
