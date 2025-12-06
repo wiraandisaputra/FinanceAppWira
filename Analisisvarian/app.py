@@ -1,174 +1,129 @@
 import streamlit as st
+import pdfplumber
 import pandas as pd
-import plotly.express as px
-import numpy as np
-import os
-from groq import Groq
-from dotenv import load_dotenv
-from PyPDF2 import PdfReader
+import matplotlib.pyplot as plt
+import re
 
-# =====================
-# SETUP
-# =====================
-st.set_page_config(page_title="AI Agent Akuntansi", page_icon="📊", layout="wide")
-st.title("📊 AI Agent Akuntansi – Analisis Laporan Keuangan Otomatis")
+st.set_page_config(page_title="AI Financial Analysis", layout="wide")
 
-load_dotenv()
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+st.title("📊 AI Agent Analisis Laporan Keuangan dari PDF")
+st.write("Upload laporan keuangan (PDF) untuk dianalisis otomatis")
 
-if not GROQ_API_KEY:
-    st.error("API Key belum ada di .env atau Streamlit Secrets")
-    st.stop()
+# -----------------------------------
+# Fungsi mengambil angka dari PDF
+# -----------------------------------
+def extract_number(text, keyword):
+    pattern = rf"{keyword}.*?([\d,\.]+)"
+    match = re.search(pattern, text, re.IGNORECASE)
+    if match:
+        return float(match.group(1).replace(',', ''))
+    return 0
 
-client = Groq(api_key=GROQ_API_KEY)
+# -----------------------------------
+# Upload PDF
+# -----------------------------------
+uploaded_file = st.file_uploader("Upload Laporan Keuangan (PDF)", type="pdf")
 
-# =====================
-# MODEL
-# =====================
-model_choice = st.selectbox(
-    "🤖 Pilih AI Model",
-    ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "openai/gpt-oss-120b"]
-)
+if uploaded_file is not None:
+    with pdfplumber.open(uploaded_file) as pdf:
+        all_text = ""
+        for page in pdf.pages:
+            all_text += page.extract_text()
 
-# =====================
-# UPLOAD FILE
-# =====================
-uploaded_file = st.file_uploader(
-    "📂 Upload Laporan Keuangan (Excel / PDF)",
-    type=["xlsx", "pdf"]
-)
+    # Ambil data penting (ubah kata sesuai laporan BEI)
+    current_assets = extract_number(all_text, "Aset Lancar")
+    current_liabilities = extract_number(all_text, "Liabilitas Jangka Pendek")
+    total_assets = extract_number(all_text, "Total Aset")
+    total_liabilities = extract_number(all_text, "Total Liabilitas")
+    equity = extract_number(all_text, "Total Ekuitas")
+    net_income = extract_number(all_text, "Laba Bersih")
+    revenue = extract_number(all_text, "Pendapatan")
 
-# =====================
-# FUNCTIONS
-# =====================
+    # -----------------------------------
+    # Tampilkan data hasil ekstraksi
+    # -----------------------------------
+    st.subheader("📌 Data Utama yang Terbaca")
+    data = {
+        "Aset Lancar": current_assets,
+        "Liabilitas Lancar": current_liabilities,
+        "Total Aset": total_assets,
+        "Total Liabilitas": total_liabilities,
+        "Ekuitas": equity,
+        "Laba Bersih": net_income,
+        "Pendapatan": revenue
+    }
 
-def extract_text_from_pdf(file):
-    pdf = PdfReader(file)
-    text = ""
-    for page in pdf.pages:
-        text += page.extract_text() + "\n"
-    return text
+    st.dataframe(pd.DataFrame(data.items(), columns=["Komponen", "Jumlah (Rp)"]))
+
+    # -----------------------------------
+    # Hitung RASIO
+    # -----------------------------------
+    st.subheader("📊 Hasil Rasio Keuangan")
+
+    # Likuiditas
+    current_ratio = current_assets / current_liabilities if current_liabilities != 0 else 0
+
+    # Solvabilitas
+    debt_ratio = total_liabilities / total_assets if total_assets != 0 else 0
+    der = total_liabilities / equity if equity != 0 else 0
+
+    # Profitabilitas
+    roa = net_income / total_assets if total_assets != 0 else 0
+    roe = net_income / equity if equity != 0 else 0
+    npm = net_income / revenue if revenue != 0 else 0
+
+    # Aktivitas
+    total_asset_turnover = revenue / total_assets if total_assets != 0 else 0
 
 
-def calculate_ratios(data):
-    ratios = {}
+    ratio_data = {
+        "Current Ratio": current_ratio,
+        "Debt Ratio": debt_ratio,
+        "DER": der,
+        "ROA": roa,
+        "ROE": roe,
+        "NPM": npm,
+        "Total Asset Turnover": total_asset_turnover
+    }
 
-    try:
-        ratios["Current Ratio"] = data["Current Assets"] / data["Current Liabilities"]
-        ratios["Debt to Equity Ratio"] = data["Total Liabilities"] / data["Total Equity"]
-        ratios["Net Profit Margin (%)"] = (data["Net Income"] / data["Revenue"]) * 100
-        ratios["Total Asset Turnover"] = data["Revenue"] / data["Total Assets"]
-    except:
-        return None
-
-    return ratios
-
-
-def create_ratio_dataframe(ratios):
-    df = pd.DataFrame(list(ratios.items()), columns=["Rasio", "Nilai"])
-    return df
+    st.dataframe(pd.DataFrame(ratio_data.items(), columns=["Rasio", "Nilai"]))
 
 
-# =====================
-# MAIN PROCESS
-# =====================
+    # -----------------------------------
+    # Grafik
+    # -----------------------------------
 
-if uploaded_file:
+    st.subheader("📈 Grafik Rasio")
 
-    file_type = uploaded_file.name.split(".")[-1]
+    fig, ax = plt.subplots()
+    ax.bar(ratio_data.keys(), ratio_data.values())
+    plt.xticks(rotation=45)
+    st.pyplot(fig)
 
-    # ============= PDF =============
-    if file_type == "pdf":
-        st.info("📄 File PDF terdeteksi - mengekstrak teks...")
+    # -----------------------------------
+    # AI INSIGHT (Analisis Otomatis)
+    # -----------------------------------
+    st.subheader("🤖 AI Insight")
 
-        pdf_text = extract_text_from_pdf(uploaded_file)
-
-        st.subheader("📑 Preview Text dari PDF")
-        st.text_area("Isi Laporan", pdf_text[:3000], height=250)
-
-        if st.button("🔍 Analisis AI dari PDF"):
-            response = client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "You are an expert financial analyst and accountant."},
-                    {"role": "user", "content": f"Analisis laporan keuangan berikut dari PDF:\n{pdf_text[:4000]}"}
-                ],
-                model=model_choice
-            )
-
-            st.subheader("🤖 Hasil Analisis AI")
-            st.write(response.choices[0].message.content)
-
-    # ============= EXCEL =============
+    if current_ratio > 1:
+        likuiditas_status = "Likuid (kondisi baik)"
     else:
-        df = pd.read_excel(uploaded_file)
+        likuiditas_status = "Kurang likuid"
 
-        st.subheader("📊 Preview Data")
-        st.dataframe(df)
+    if debt_ratio < 0.6:
+        solvabilitas_status = "Struktur modal sehat"
+    else:
+        solvabilitas_status = "Risiko utang cukup tinggi"
 
-        needed_cols = [
-            "Current Assets",
-            "Current Liabilities",
-            "Total Liabilities",
-            "Total Equity",
-            "Revenue",
-            "Net Income",
-            "Total Assets"
-        ]
+    if roa > 0.05:
+        profitabilitas_status = "Perusahaan cukup profitable"
+    else:
+        profitabilitas_status = "Profitabilitas rendah"
 
-        if not all(col in df.columns for col in needed_cols):
-            st.warning(f"Kolom berikut harus ada: {needed_cols}")
-        else:
-            row = df.iloc[0]
 
-            financial_data = {
-                "Current Assets": row["Current Assets"],
-                "Current Liabilities": row["Current Liabilities"],
-                "Total Liabilities": row["Total Liabilities"],
-                "Total Equity": row["Total Equity"],
-                "Revenue": row["Revenue"],
-                "Net Income": row["Net Income"],
-                "Total Assets": row["Total Assets"],
-            }
-
-            ratios = calculate_ratios(financial_data)
-
-            if ratios:
-                st.subheader("📌 Hasil Perhitungan Rasio")
-
-                ratio_df = create_ratio_dataframe(ratios)
-                st.dataframe(ratio_df)
-
-                fig = px.bar(
-                    ratio_df,
-                    x="Rasio",
-                    y="Nilai",
-                    title="Grafik Analisis Rasio Keuangan",
-                    text_auto=".2f",
-                    color="Rasio"
-                )
-
-                st.plotly_chart(fig, use_container_width=True)
-
-                if st.button("🤖 Analisis AI + Rekomendasi"):
-                    ai_prompt = f"""
-                    Berikut ini hasil rasio keuangan perusahaan:
-                    {ratio_df.to_string(index=False)}
-
-                    Buatkan analisis:
-                    1. Kondisi keuangan perusahaan
-                    2. Risiko (likuiditas & solvabilitas)
-                    3. Prospek jangka panjang
-                    4. Rekomendasi strategi
-                    """
-
-                    response = client.chat.completions.create(
-                        messages=[
-                            {"role": "system", "content": "You are a senior financial analyst."},
-                            {"role": "user", "content": ai_prompt}
-                        ],
-                        model=model_choice
-                    )
-
-                    st.subheader("📈 Insight dari AI Agent Akuntansi")
-                    st.write(response.choices[0].message.content)
-
+    st.write(f"""
+    • Rasio Likuiditas: {likuiditas_status} (CR = {current_ratio:.2f})
+    • Rasio Solvabilitas: {solvabilitas_status} (Debt Ratio = {debt_ratio:.2f})
+    • Rasio Profitabilitas: {profitabilitas_status} (ROA = {roa:.2f})
+    • Aktivitas Aset: Perputaran aset sebesar {total_asset_turnover:.2f} kali
+    """)
