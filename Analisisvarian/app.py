@@ -4,7 +4,6 @@ import plotly.express as px
 import numpy as np
 import duckdb
 import os
-import re
 from dotenv import load_dotenv
 
 #############################################
@@ -29,7 +28,7 @@ st.set_page_config(
 )
 
 st.title("🤖 AI Financial Super Agent – All-in-One Dashboard")
-st.caption("Gabungan: Variance Analysis + Scenario Planning + Dashboard + AI Chat")
+st.caption("Excel / PDF → Auto Analysis | Variance | Scenario | Dashboard | AI Chat")
 
 #############################################
 # PDF ENGINE
@@ -76,20 +75,23 @@ def ai_analyze(prompt):
 #############################################
 # FILE UPLOADER
 #############################################
-uploaded_file = st.file_uploader("📂 Upload File (Excel / CSV / PDF)", type=["xlsx", "csv", "pdf"])
+uploaded_file = st.file_uploader(
+    "📂 Upload File (Excel / CSV / PDF)",
+    type=["xlsx", "xls", "csv", "pdf"]
+)
 
 if uploaded_file:
 
     file_type = uploaded_file.name.split(".")[-1]
 
-    #############################################
+    ##################################################
     # PDF MODE
-    #############################################
+    ##################################################
     if file_type == "pdf":
         text = extract_text_from_pdf(uploaded_file)
 
-        st.subheader("📄 Preview Text PDF")
-        st.text_area("PDF Text", text[:3000], height=200)
+        st.subheader("📄 Preview Text (PDF)")
+        st.text_area("PDF Content", text[:3000], height=200)
 
         prompt = f"""
         Berikut isi laporan keuangan (PDF):
@@ -100,29 +102,43 @@ if uploaded_file:
         - Kinerja keuangan
         - Risiko
         - Profitabilitas
-        - Likuiditas (jika bisa)
+        - Likuiditas (jika bisa diambil)
         - Rekomendasi strategis
         """
 
         with st.spinner("🤖 AI Menganalisis PDF..."):
             result = ai_analyze(prompt)
+
         st.subheader("🤖 AI Analysis (PDF)")
         st.write(result)
 
-
-    #############################################
+    ##################################################
     # EXCEL / CSV MODE
-    #############################################
+    ##################################################
     else:
+
+        # ===========================
+        # ✅ MULTI SHEET READER
+        # ===========================
         if file_type == "csv":
             df = pd.read_csv(uploaded_file)
+            sheet_names = ["CSV File"]
+            selected_sheet = "CSV File"
         else:
-            df = pd.read_excel(uploaded_file)
+            sheets = pd.read_excel(uploaded_file, sheet_name=None)
+            sheet_names = list(sheets.keys())
 
-        st.subheader("📊 Data Preview")
-        st.dataframe(df.head())
+            selected_sheet = st.selectbox("📑 Pilih Sheet", sheet_names)
+            df = sheets[selected_sheet]
 
-        tabs = st.tabs(["📊 Variance Analysis", "📈 Scenario Planning", "📍 Dashboard & AI Chat"])
+        st.subheader(f"📊 Data dari Sheet: {selected_sheet}")
+        st.dataframe(df.head(50))
+
+        tabs = st.tabs([
+            "📊 Variance Analysis",
+            "📈 Scenario Planning",
+            "📍 Dashboard & AI Chat"
+        ])
 
         ##################################################
         # TAB 1 - VARIANCE ANALYSIS
@@ -165,7 +181,7 @@ if uploaded_file:
                     Analisis:
                     - Penyimpangan terbesar
                     - Penyebab potensial
-                    - Solusi manajerial
+                    - Rekomendasi manajerial
                     """
                     ai = ai_analyze(prompt)
 
@@ -183,7 +199,9 @@ if uploaded_file:
 
             if {"Category","Base Forecast"}.issubset(df.columns):
 
-                scenario_prompt = st.text_area("Masukkan skenario (misal: penurunan penjualan 10%)")
+                scenario_prompt = st.text_area(
+                    "Masukkan skenario (contoh: penurunan penjualan 10%, kenaikan biaya 5%)"
+                )
 
                 if st.button("🚀 Generate Scenario"):
                     df["Optimistic"] = df["Base Forecast"] * np.random.uniform(1.1, 1.3, len(df))
@@ -204,12 +222,13 @@ if uploaded_file:
 
                     with st.spinner("🤖 AI Analyze Scenario..."):
                         prompt = f"""
-                        Scenario Planning:
+                        Scenario Planning Result:
                         {df.to_string()}
 
-                        Scenario input user: {scenario_prompt}
+                        Scenario input user:
+                        {scenario_prompt}
 
-                        Berikan insight, risiko & rekomendasi strategi.
+                        Berikan insight, risiko & strategi bisnis.
                         """
                         scenario_ai = ai_analyze(prompt)
 
@@ -223,9 +242,10 @@ if uploaded_file:
         # TAB 3 - DASHBOARD + AI CHAT
         ##################################################
         with tabs[2]:
+            st.subheader("📍 Sales Dashboard")
 
             if {"Region","Sales"}.issubset(df.columns):
-                
+
                 query = """
                 SELECT Region, SUM(Sales) as Total_Sales
                 FROM df
@@ -248,10 +268,10 @@ if uploaded_file:
 
                 with st.spinner("🤖 AI Insight..."):
                     commentary = ai_analyze(f"""
-                    Berikut penjualan per region:
+                    Berikut data penjualan per region:
                     {region_sales.to_string()}
 
-                    Buatkan insight strategis tingkat lanjut.
+                    Berikan analisis kinerja & strategi peningkatan.
                     """)
 
                 st.subheader("🤖 AI Commentary")
@@ -261,7 +281,9 @@ if uploaded_file:
                 st.subheader("💬 AI Chat Mode")
 
                 if "chat_history" not in st.session_state:
-                    st.session_state.chat_history = [{"role": "system", "content": "Kamu adalah AI analis keuangan profesional."}]
+                    st.session_state.chat_history = [
+                        {"role": "system", "content": "Kamu adalah AI analis keuangan profesional."}
+                    ]
 
                 for msg in st.session_state.chat_history:
                     if msg["role"] == "user":
@@ -284,5 +306,6 @@ if uploaded_file:
 
             else:
                 st.warning("Kolom wajib: Region dan Sales")
+
 else:
-    st.info("Upload file untuk memulai analisis.")
+    st.info("📂 Upload file untuk memulai analisis.")
