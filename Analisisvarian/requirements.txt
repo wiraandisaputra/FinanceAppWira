@@ -1,13 +1,10 @@
 streamlit
 pandas
-matplotlib
 numpy
+plotly
+duckdb
 pdfplumber
 PyPDF2
-plotly
 python-dotenv
 groq
 openpyxl
-duckdb
-plotly>=5.11.0
-python-dotenv
